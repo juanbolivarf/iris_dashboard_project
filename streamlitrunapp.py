@@ -5,7 +5,7 @@ import plotly.express as px
 import matplotlib.pyplot as plt
 
 st.set_page_config(page_title="Iris Dashboard", layout="wide")
-st.title("🌸 Iris Dataset EDA Dashboard")
+st.title("🌸 Iris Dataset EDA Dashboard - by Juan Bolívar Ferrer")
 
 # -------------------------
 # Load data
