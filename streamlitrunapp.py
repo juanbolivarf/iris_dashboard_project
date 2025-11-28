@@ -1,94 +1,173 @@
-import streamlit as st
+import os
+import numpy as np
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 import plotly.express as px
+import streamlit as st
 
-# -------------------------------------------------
-# Load Dataset
-# -------------------------------------------------
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+
+# -------------------------------------------------------------------
+# Streamlit page config
+# -------------------------------------------------------------------
+st.set_page_config(
+    page_title="Iris Dataset EDA Dashboard",
+    page_icon="🌸",
+    layout="wide",
+)
+
+# -------------------------------------------------------------------
+# 1. Data loading
+# -------------------------------------------------------------------
 @st.cache_data
-def load_data():
-    df = pd.read_csv("Iris.csv")
+def load_data(csv_path: str = "Iris.csv") -> pd.DataFrame:
+    if not os.path.exists(csv_path):
+        raise FileNotFoundError(f"File not found: {csv_path}")
+
+    df = pd.read_csv(csv_path)
+
+    # Drop Id if present
     if "Id" in df.columns:
         df = df.drop(columns=["Id"])
+
     return df
 
-df = load_data()
 
-# -------------------------------------------------
-# UI Header
-# -------------------------------------------------
-st.set_page_config(page_title="Iris Dashboard", layout="wide")
+# -------------------------------------------------------------------
+# 2. Train simple model using only petal features
+# -------------------------------------------------------------------
+@st.cache_resource
+def train_petal_model(df: pd.DataFrame):
+    """
+    Trains a multinomial Logistic Regression model using only
+    PetalLengthCm and PetalWidthCm to predict Species.
+    """
+    from sklearn.model_selection import train_test_split
 
-st.markdown(
-    "<h1 style='text-align:center;'>🌸 Iris Dataset EDA Dashboard - by Juan Bolívar Ferrer</h1>",
-    unsafe_allow_html=True
-)
+    X = df[["PetalLengthCm", "PetalWidthCm"]]
+    y = df["Species"]
 
-st.write("### Dataset Preview")
-st.dataframe(df.head())
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
 
-# -------------------------------------------------
-# Filters
-# -------------------------------------------------
-species_list = sorted(df["Species"].unique().tolist())
+    model = LogisticRegression(
+        multi_class="multinomial", max_iter=200, random_state=42
+    )
+    model.fit(X_scaled, y)
 
-selected_species = st.multiselect(
-    "Select Species",
-    species_list,
-    default=species_list
-)
+    return model, scaler
 
-filtered_df = df[df["Species"].isin(selected_species)]
 
-# -------------------------------------------------
-# KPI Cards
-# -------------------------------------------------
-total_flowers = filtered_df.shape[0]
-species_count = filtered_df["Species"].nunique()
+# -------------------------------------------------------------------
+# Main app
+# -------------------------------------------------------------------
+def main():
+    df = load_data()
 
-col1, col2 = st.columns(2)
-col1.metric("Total Flowers", total_flowers)
-col2.metric("Selected Species Count", species_count)
+    st.title("🌸 Iris Dataset EDA Dashboard - by Juan Bolívar Ferrer")
 
-# -------------------------------------------------
-# Scatterplot (Sepal Length vs Petal Length)
-# -------------------------------------------------
-st.write("## Sepal Length vs Petal Length")
+    # ---------------- Sidebar filters ----------------
+    with st.sidebar:
+        st.header("Filters")
 
-fig_scatter = px.scatter(
-    filtered_df,
-    x="SepalLengthCm",
-    y="PetalLengthCm",
-    color="Species",
-    title="Sepal Length vs Petal Length",
-    height=500
-)
+        species_options = sorted(df["Species"].unique())
+        selected_species = st.multiselect(
+            "Select Species",
+            options=species_options,
+            default=species_options,
+        )
 
-st.plotly_chart(fig_scatter, use_container_width=True)
+    if not selected_species:
+        st.warning("Please select at least one species from the sidebar.")
+        return
 
-# -------------------------------------------------
-# Pairplot Section (FIXED)
-# -------------------------------------------------
-st.write("## Pairplot")
+    filtered_df = df[df["Species"].isin(selected_species)]
 
-with st.expander("Show pairplot (may take a few seconds)"):
-    st.write("Rendering pairplot...")
+    # ---------------- Dataset preview ----------------
+    st.subheader("Dataset Preview")
+    st.dataframe(filtered_df.head(), use_container_width=True)
 
-    fig = sns.pairplot(filtered_df, hue="Species")
-    st.pyplot(fig)      # ✅ Dynamic seaborn rendering
-    plt.close()
+    kpi_col1, kpi_col2 = st.columns(2)
+    with kpi_col1:
+        st.metric("Total Flowers (filtered)", len(filtered_df))
+    with kpi_col2:
+        st.metric("Selected Species Count", len(selected_species))
 
-# -------------------------------------------------
-# Correlation Heatmap
-# -------------------------------------------------
-st.write("## Correlation Heatmap")
+    # ---------------- Sepal vs Petal scatter ----------------
+    st.subheader("Sepal Length vs Petal Length")
+    fig_scatter = px.scatter(
+        filtered_df,
+        x="SepalLengthCm",
+        y="PetalLengthCm",
+        color="Species",
+        labels={
+            "SepalLengthCm": "Sepal Length (cm)",
+            "PetalLengthCm": "Petal Length (cm)",
+        },
+        height=450,
+    )
+    st.plotly_chart(fig_scatter, use_container_width=True)
 
-numeric_df = filtered_df.drop(columns=["Species"])
-corr = numeric_df.corr()
+    # ---------------- Pairplot (no PNG file!) ----------------
+    st.subheader("Pairplot")
+    with st.expander("Show pairplot (may take a few seconds)"):
+        sns.set(style="ticks")
+        g = sns.pairplot(filtered_df, hue="Species", diag_kind="kde")
+        st.pyplot(g.fig)
+        plt.close("all")
 
-plt.figure(figsize=(8, 5))
-fig_corr = sns.heatmap(corr, annot=True, cmap="Blues")
-st.pyplot(fig_corr.get_figure())
-plt.close()
+    # ---------------- Correlation heatmap ----------------
+    st.subheader("Correlation Heatmap")
+    numeric_df = filtered_df.select_dtypes(include=["int64", "float64"])
+    corr = numeric_df.corr()
+
+    fig_corr, ax = plt.subplots(figsize=(5, 4))
+    sns.heatmap(corr, annot=True, cmap="Blues", fmt=".2f", ax=ax)
+    st.pyplot(fig_corr)
+    plt.close(fig_corr)
+
+    # ---------------- Prediction section ----------------
+    st.subheader("🔮 Predict Species from Petal Measurements")
+    st.write(
+        "Use the petal length and width to predict the iris species with a "
+        "Logistic Regression model trained only on petal features."
+    )
+
+    model, scaler = train_petal_model(df)
+
+    c1, c2 = st.columns(2)
+    with c1:
+        petal_length = st.slider(
+            "Petal length (cm)",
+            float(df["PetalLengthCm"].min()),
+            float(df["PetalLengthCm"].max()),
+            float(df["PetalLengthCm"].mean()),
+        )
+    with c2:
+        petal_width = st.slider(
+            "Petal width (cm)",
+            float(df["PetalWidthCm"].min()),
+            float(df["PetalWidthCm"].max()),
+            float(df["PetalWidthCm"].mean()),
+        )
+
+    if st.button("Predict Species"):
+        x_new = np.array([[petal_length, petal_width]])
+        x_new_scaled = scaler.transform(x_new)
+        pred_species = model.predict(x_new_scaled)[0]
+        proba = model.predict_proba(x_new_scaled)[0]
+
+        st.success(f"Predicted species: **{pred_species}**")
+
+        proba_df = pd.DataFrame(
+            {"Species": model.classes_, "Probability": proba}
+        )
+        proba_df = proba_df.set_index("Species")
+        st.bar_chart(proba_df)
+
+
+if __name__ == "__main__":
+    main()
+

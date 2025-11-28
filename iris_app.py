@@ -299,4 +299,3 @@ st.caption(
     "The predictive model uses a KNN classifier trained only with "
     "`PetalLengthCm` and `PetalWidthCm`, which are the most discriminative features."
 )
-git
