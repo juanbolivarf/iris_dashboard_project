@@ -1,75 +1,94 @@
-# project.py
-# IRIS SPECIES CLASSIFICATION PROJECT
-
+import streamlit as st
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
-from sklearn.metrics import accuracy_score, classification_report
-from sklearn.linear_model import LogisticRegression
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.tree import DecisionTreeClassifier
+import plotly.express as px
 
-print("\n=== IRIS SPECIES CLASSIFICATION PROJECT ===\n")
+# -------------------------------------------------
+# Load Dataset
+# -------------------------------------------------
+@st.cache_data
+def load_data():
+    df = pd.read_csv("Iris.csv")
+    if "Id" in df.columns:
+        df = df.drop(columns=["Id"])
+    return df
 
-# 1. Load dataset
-df = pd.read_csv("Iris.csv")
-print("Dataset Loaded Successfully!")
-print(df.head())
+df = load_data()
 
-# 2. Basic EDA
-print("\nDataset Info:")
-print(df.info())
+# -------------------------------------------------
+# UI Header
+# -------------------------------------------------
+st.set_page_config(page_title="Iris Dashboard", layout="wide")
 
-print("\nClass Distribution:")
-print(df["Species"].value_counts())
+st.markdown(
+    "<h1 style='text-align:center;'>🌸 Iris Dataset EDA Dashboard - by Juan Bolívar Ferrer</h1>",
+    unsafe_allow_html=True
+)
 
-# Pairplot
-sns.pairplot(df, hue="Species")
-plt.suptitle("Pairplot of Iris Dataset", y=1.02)
-plt.show()
+st.write("### Dataset Preview")
+st.dataframe(df.head())
 
-# Correlation heatmap
-plt.figure(figsize=(7,5))
-sns.heatmap(df.drop("Species", axis=1).corr(), annot=True, cmap="Blues")
-plt.title("Correlation Heatmap")
-plt.show()
+# -------------------------------------------------
+# Filters
+# -------------------------------------------------
+species_list = sorted(df["Species"].unique().tolist())
 
-# 3. Preprocess
-X = df.drop("Species", axis=1)
-y = df["Species"]
+selected_species = st.multiselect(
+    "Select Species",
+    species_list,
+    default=species_list
+)
 
-le = LabelEncoder()
-y = le.fit_transform(y)
+filtered_df = df[df["Species"].isin(selected_species)]
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+# -------------------------------------------------
+# KPI Cards
+# -------------------------------------------------
+total_flowers = filtered_df.shape[0]
+species_count = filtered_df["Species"].nunique()
 
-# 4. Models
-models = {
-    "Logistic Regression": LogisticRegression(max_iter=200),
-    "KNN Classifier": KNeighborsClassifier(),
-    "Decision Tree": DecisionTreeClassifier()
-}
+col1, col2 = st.columns(2)
+col1.metric("Total Flowers", total_flowers)
+col2.metric("Selected Species Count", species_count)
 
-results = {}
+# -------------------------------------------------
+# Scatterplot (Sepal Length vs Petal Length)
+# -------------------------------------------------
+st.write("## Sepal Length vs Petal Length")
 
-print("\n=== MODEL PERFORMANCE ===")
+fig_scatter = px.scatter(
+    filtered_df,
+    x="SepalLengthCm",
+    y="PetalLengthCm",
+    color="Species",
+    title="Sepal Length vs Petal Length",
+    height=500
+)
 
-for name, model in models.items():
-    model.fit(X_train, y_train)
-    preds = model.predict(X_test)
-    acc = accuracy_score(y_test, preds)
-    results[name] = acc
-    print(f"\n{name} Accuracy: {acc:.4f}")
-    print(classification_report(y_test, preds))
+st.plotly_chart(fig_scatter, use_container_width=True)
 
-# 5. Compare models
-plt.figure(figsize=(7,4))
-sns.barplot(x=list(results.keys()), y=list(results.values()))
-plt.title("Model Comparison (Accuracy)")
-plt.ylabel("Accuracy")
-plt.show()
+# -------------------------------------------------
+# Pairplot Section (FIXED)
+# -------------------------------------------------
+st.write("## Pairplot")
 
-best_model = max(results, key=results.get)
-print(f"\nBest model: {best_model} (Accuracy: {results[best_model]:.4f})")
+with st.expander("Show pairplot (may take a few seconds)"):
+    st.write("Rendering pairplot...")
+
+    fig = sns.pairplot(filtered_df, hue="Species")
+    st.pyplot(fig)      # ✅ Dynamic seaborn rendering
+    plt.close()
+
+# -------------------------------------------------
+# Correlation Heatmap
+# -------------------------------------------------
+st.write("## Correlation Heatmap")
+
+numeric_df = filtered_df.drop(columns=["Species"])
+corr = numeric_df.corr()
+
+plt.figure(figsize=(8, 5))
+fig_corr = sns.heatmap(corr, annot=True, cmap="Blues")
+st.pyplot(fig_corr.get_figure())
+plt.close()
